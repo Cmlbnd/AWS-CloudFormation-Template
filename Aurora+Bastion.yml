@@ -1,0 +1,102 @@
+Description: Aurora serverless cluster
+
+Parameters:
+  DatabaseName:
+    Type: String
+  EngineVersion:
+    Type: String
+    Default: '5.6'
+  MasterUsername:
+    Type: String
+    Default: root
+  MasterUserPassword:
+    Type: String
+    NoEcho: true
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicBastionSubnet:
+    Type: AWS::EC2::Subnet::Id
+  PrivateDataBaseSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  BastionImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn-ami-hvm-x86_64-ebs
+  BastionKeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 key used to connect to the bastion host
+
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS Subnet Group
+      SubnetIds: !Ref PrivateDataBaseSubnets
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Bastion for ${AWS::StackName}'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Cluster for ${AWS::StackName}'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+      VpcId: !Ref VpcId
+
+  Cluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora
+      EngineMode: serverless
+      EngineVersion: !Ref EngineVersion
+      DatabaseName: !Ref DatabaseName
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      DBClusterIdentifier: !Ref AWS::StackName
+      BackupRetentionPeriod: 35
+      DeletionProtection: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RDSSecurityGroup
+
+  Bastion:
+    Type: AWS::EC2::Instance
+    Properties:
+      DisableApiTermination: true
+      ImageId: !Ref BastionImageId
+      InstanceType: t2.nano
+      KeyName: !Ref BastionKeyName
+      Monitoring: false
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      SubnetId: !Ref PublicBastionSubnet
+      UserData: !Base64 'yum install mysql --assumeyes'
+
+Outputs:
+  Host:
+    Value: !GetAtt Cluster.Endpoint.Address
+    Export:
+      Name: !Sub '${AWS::StackName}Host'
+  Name:
+    Value: !Ref DatabaseName
+    Export:
+      Name: !Sub '${AWS::StackName}Name'
+  BastionSecurityGroupId:
+    Value: !GetAtt BastionSecurityGroup.GroupId
+    Export:
+      Name: !Sub '${AWS::StackName}BastionSecurityGroupId'
