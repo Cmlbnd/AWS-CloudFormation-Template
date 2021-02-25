@@ -158,7 +158,7 @@ Resources:
     Properties:
       Family: !Ref ServiceName
       Cpu: !Ref ContainerCpu
-      TaskRoleArn: arn:aws:iam::183347010881:role/ecsTaskExecutionRole
+      TaskRoleArn: arn:aws:iam::ACCOUNTID:role/ecsTaskExecutionRole
       ExecutionRoleArn: ecsTaskExecutionRole
       Memory: !Ref ContainerMemory
       NetworkMode: awsvpc
